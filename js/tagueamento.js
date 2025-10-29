@@ -1,38 +1,54 @@
-/* tagueamento.js - GTAG version (corrigido e estável) */
+/* tagueamento.js - GTAG version (robusto e validado) */
 (function () {
   const GA4_ID = "G-096NHNN8Q2";
+  const BLOCKED_IDS = ["G-BZXLFW2C48"]; // impede carregamento indevido
 
+  // Bloqueia outras propriedades GA4/GTM antes de carregar o nosso
+  document.querySelectorAll('script[src*="googletagmanager.com/gtag/js"]').forEach(s => {
+    if (BLOCKED_IDS.some(id => s.src.includes(id))) {
+      console.warn("🚫 Bloqueando carregamento indevido:", s.src);
+      s.remove();
+    }
+  });
+
+  // Redefine dataLayer isolado
   window.dataLayer = window.dataLayer || [];
-  window.gtag = window.gtag || function () {
-    dataLayer.push(arguments);
-  };
+  window.gtag = window.gtag || function () { dataLayer.push(arguments); };
 
-  // Carrega script do GA4 e envia page_view somente após o load
+  // Carrega script GA4 com DEFER para garantir ordem
   if (!document.querySelector(`script[src*="googletagmanager.com/gtag/js?id=${GA4_ID}"]`)) {
     const s = document.createElement("script");
-    s.async = true;
+    s.defer = true;
     s.src = `https://www.googletagmanager.com/gtag/js?id=${GA4_ID}`;
     document.head.appendChild(s);
+  }
 
-    s.onload = () => {
+  // Config inicial + page_view quando tudo estiver carregado
+  function initGA() {
+    try {
       gtag("js", new Date());
       gtag("config", GA4_ID, { send_page_view: false });
-      sendPageView(); // só envia depois do carregamento
-    };
-  } else {
-    gtag("config", GA4_ID, { send_page_view: false });
-    sendPageView();
+      sendPageView();
+    } catch (e) {
+      console.warn("Aguardando GA4 carregar...", e);
+      setTimeout(initGA, 500);
+    }
   }
 
-  // Função robusta de page_view
+  // Função garantida de page_view
   function sendPageView() {
-    const payload = { page_location: location.href };
+    const payload = { page_location: location.href, engagement_time_msec: 1 };
     gtag("event", "page_view", payload);
-    if (window.__DEBUG_GTAG)
-      console.log("✅ page_view enviado", payload);
+    if (window.__DEBUG_GTAG) console.log("✅ page_view enviado:", payload);
   }
 
-  // Função utilitária para enviar eventos
+  // Envia page_view após o load completo
+  window.addEventListener("load", initGA);
+
+  // Reenvia page_view ao trocar de página (navegação interna)
+  window.addEventListener("popstate", sendPageView);
+
+  /* === Função utilitária para eventos === */
   function track(name, params) {
     const payload = Object.assign({ page_location: location.href }, params || {});
     gtag("event", name, payload);
@@ -44,7 +60,7 @@
     if (window.__GA4_BOUND) return;
     window.__GA4_BOUND = true;
 
-    /* ========== MENU ========== */
+    /* === MENU === */
     const contato = document.querySelector(".menu-lista-contato");
     const download = document.querySelector(".menu-lista-download");
 
@@ -58,9 +74,8 @@
         track("file_download", { element_group: "menu", element_name: "download_pdf" });
       });
 
-    /* ========== ANÁLISE (“Lorem Ipsum”) ========== */
+    /* === ANÁLISE === */
     if (document.body.classList.contains("analise")) {
-      // Captura qualquer botão/link nos cards
       const cards = document.querySelectorAll(".card-link, .card a, .btn, .vermais, .card-montadoras a");
       const labels = ["lorem", "ipsum", "dolor", "amet"];
       cards.forEach((btn, i) => {
@@ -71,7 +86,7 @@
       });
     }
 
-    /* ========== SOBRE (Formulário) ========== */
+    /* === SOBRE === */
     if (document.body.classList.contains("sobre")) {
       const form = document.querySelector("form.contato") || document.querySelector("form");
       if (!form) return;
@@ -80,14 +95,10 @@
       const meta = {
         form_id: form.id || "",
         form_name: form.getAttribute("name") || "contato",
-        form_destination:
-          form.getAttribute("action") || (location.origin + location.pathname + "#contato"),
+        form_destination: form.getAttribute("action") || (location.origin + location.pathname + "#contato"),
       };
 
-      let started = false,
-        submitted = false,
-        successSent = false;
-
+      let started = false, successSent = false;
       function onStart() {
         if (started) return;
         started = true;
@@ -100,8 +111,7 @@
         );
       });
 
-      form.addEventListener("submit", () => {
-        submitted = true;
+      form.addEventListener("submit", (e) => {
         const txt =
           (submitBtn &&
             (submitBtn.value || submitBtn.innerText || submitBtn.textContent)) ||
@@ -110,7 +120,6 @@
           form_submit_text: String(txt).trim().toLowerCase(),
         }));
 
-        // Envia view_form_success garantido
         setTimeout(() => {
           if (!successSent) {
             successSent = true;
@@ -119,8 +128,5 @@
         }, 800);
       });
     }
-
-    /* ========== PAGE VIEW NA TROCA DE PÁGINA (ex: SPA / navegação interna) ========== */
-    window.addEventListener("popstate", sendPageView);
   });
 })();
