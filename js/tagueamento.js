@@ -1,202 +1,116 @@
-/* ============================================================
-   tagueamento-v3.js
-   Implementação completa de rastreamento via gtag (GA4)
-   Autor: Raphael Eiras - Case Técnico DP6
-   Propriedade ativa: G-096NHNN8Q2
-   ============================================================ */
-
+      /*===================================================== */
 (function () {
-  const GA4_ID = "G-096NHNN8Q2";
-  const BLOCKED_IDS = ["G-BZXLFW2C48"];
-  const MAX_TEXT = 160;
+  const GA4_ID = 'G-096NHNN8Q2';
 
-  // === Debug helper ===
-  function dbg(...args) {
-    if (window.__DEBUG_GTAG) console.log("[TAGUEAMENTO]", ...args);
-  }
+  // 0) Base gtag + carga do script
+  window.dataLayer = window.dataLayer || [];
+  window.gtag = window.gtag || function(){ dataLayer.push(arguments); };
 
-  // === Block any GA4 script from blocked IDs ===
-  (function interceptGA() {
-    const origCreate = document.createElement;
-    document.createElement = function (tag, opts) {
-      const el = origCreate.call(document, tag, opts);
-      if (tag.toLowerCase() === "script") {
-        const origSet = el.setAttribute;
-        el.setAttribute = function (name, value) {
-          if (name === "src" && typeof value === "string") {
-            for (const id of BLOCKED_IDS) {
-              if (value.includes(id)) {
-                dbg("⚠️ Bloqueado script GA:", value);
-                return origSet.call(this, name, ""); // neutraliza
-              }
-            }
-          }
-          return origSet.call(this, name, value);
-        };
-      }
-      return el;
-    };
-    dbg("Intercepção de GA inicializada");
-  })();
-
-  // === Loader do GA4 correto ===
-  function loadGA() {
-    if (window.__GA_LOADED) return;
-    window.__GA_LOADED = true;
-    const s = document.createElement("script");
+  if (!document.querySelector(`script[src*="googletagmanager.com/gtag/js?id=${GA4_ID}"]`)) {
+    const s = document.createElement('script');
     s.async = true;
     s.src = `https://www.googletagmanager.com/gtag/js?id=${GA4_ID}`;
-    s.onload = initGA;
     document.head.appendChild(s);
   }
 
-  // === Inicialização do GA ===
-  function initGA() {
-    window.dataLayer = window.dataLayer || [];
-    window.gtag = window.gtag || function () { dataLayer.push(arguments); };
-    gtag("js", new Date());
-    gtag("config", GA4_ID, { send_page_view: false });
-    dbg("✅ GA inicializado:", GA4_ID);
-    sendPageView();
+  gtag('js', new Date());
+  gtag('config', GA4_ID, { send_page_view: false }); // vamos enviar manualmente
+
+  // Helper simples: envia evento com page_location + params informados
+  // Espelho no dataLayer é opcional: ative no console com window.__DL_MIRROR = true
+  window.__DL_MIRROR = window.__DL_MIRROR || false;
+  function track(name, params) {
+    const payload = Object.assign({ page_location: location.href }, params || {});
+    if (window.__DL_MIRROR) { try { dataLayer.push(Object.assign({ event: name }, payload)); } catch(e){} }
+    gtag('event', name, payload);
   }
 
-  // === Envio de page_view confiável ===
-  function sendPageView(extra = {}) {
-    try {
-      const params = Object.assign({ page_location: location.href }, extra);
-      gtag("event", "page_view", params);
-      dbg("📄 page_view", params);
-    } catch {
-      setTimeout(() => sendPageView(extra), 300);
-    }
-  }
+  document.addEventListener('DOMContentLoaded', () => {
+    if (window.__GA4_BOUND) return;   // evita listeners duplicados
+    window.__GA4_BOUND = true;
 
-  // === Extração de informações de elemento ===
-  function getElInfo(el) {
-    if (!el) return {};
-    const tag = (el.tagName || "").toLowerCase();
-    const id = el.id || "";
-    const classes = el.className ? String(el.className).trim() : "";
-    const href = el.getAttribute && el.getAttribute("href") || "";
-    let text = (el.innerText || el.textContent || "").trim();
-    if (text.length > MAX_TEXT) text = text.slice(0, MAX_TEXT) + "...";
-    const dataset = el.dataset ? JSON.stringify(el.dataset) : "{}";
-    return { element_tag: tag, element_id: id, element_classes: classes, element_href: href, element_text: text, element_dataset: dataset };
-  }
+    // 1) page_view padrão (SEM parâmetros)
+    gtag('event', 'page_view');
 
-  // === Envio genérico de evento ===
-  function sendEvent(eventName, params) {
-    params.page_location = location.href;
-    try {
-      gtag("event", eventName, params);
-      dbg("🎯 evento:", eventName, params);
-    } catch {
-      setTimeout(() => sendEvent(eventName, params), 300);
-    }
-  }
+    // 2) MENU (classes do HTML do case)
+    const contato  = document.querySelector('.menu-lista-contato');
+    const download = document.querySelector('.menu-lista-download');
 
-  // === Captura global de cliques ===
-  function onGlobalClick(ev) {
-    const path = ev.composedPath ? ev.composedPath() : (ev.path || []);
-    const el = path.find(n => n.tagName) || ev.target;
-    if (!el) return;
-    const info = getElInfo(el);
-    let eventName = "click";
+    if (contato)  contato.addEventListener('click', () => {
+      track('click', { element_group: 'menu', element_name: 'entre_em_contato' });
+    });
 
-    // Regra: downloads PDF
-    if (info.element_href.match(/\.pdf/i)) {
-      eventName = "file_download";
+    if (download) download.addEventListener('click', () => {
+      track('file_download', { element_group: 'menu', element_name: 'download_pdf' });
+    });
+
+    // 3) ANÁLISE – "Ver Mais" (simples mapeamento por posição)
+    if (document.body.classList.contains('analise')) {
+      const labels = ['lorem', 'ipsum', 'dolor']; // exatamente como o case pede
+      document.querySelectorAll('.card-link').forEach((btn, i) => {
+        btn.addEventListener('click', () => {
+          track('click', { element_group: 'ver_mais', element_name: labels[i] || 'conteudo' });
+        });
+      });
     }
 
-    // Regra: hash link (#)
-    if (info.element_href.includes("#")) {
-      eventName = "anchor_hash";
-      info.element_name = info.element_href.split("#")[1] || "hash_link";
-    }
+    // 4) SOBRE – Formulário (ordem garantida: start -> submit -> success)
+    if (document.body.classList.contains('sobre')) {
+      const form = document.querySelector('form.contato') || document.querySelector('form');
+      if (!form) return;
 
-    // Regra: menu
-    if (info.element_classes.includes("menu-lista-contato")) {
-      info.element_group = "menu";
-      info.element_name = "entre_em_contato";
-    } else if (info.element_classes.includes("menu-lista-download")) {
-      eventName = "file_download";
-      info.element_group = "menu";
-      info.element_name = "download_pdf";
-    }
-
-    // Regra: cards de análise
-    if (document.body.classList.contains("analise")) {
-      let a = el;
-      while (a && a !== document) {
-        if (a.classList && (a.classList.contains("card") || a.classList.contains("card-link"))) {
-          info.element_group = "ver_mais";
-          info.element_name = info.element_text.toLowerCase() || "conteudo";
-          break;
-        }
-        a = a.parentElement;
-      }
-    }
-
-    sendEvent(eventName, info);
-  }
-
-  // === Rastreamento de formulários ===
-  function trackForms() {
-    document.querySelectorAll("form").forEach(form => {
-      if (form.__tracked) return;
-      form.__tracked = true;
-
+      const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]');
       const meta = {
-        form_id: form.id || "",
-        form_name: form.getAttribute("name") || "form",
-        form_destination: form.getAttribute("action") || location.href
+        form_id: form.id || '',
+        form_name: form.getAttribute('name') || 'contato',
+        form_destination: form.getAttribute('action') || (location.origin + location.pathname + '#contato')
       };
 
-      let started = false;
-      form.querySelectorAll("input, textarea, select").forEach(i => {
-        i.addEventListener("focus", () => {
-          if (!started) {
-            started = true;
-            sendEvent("form_start", meta);
-          }
-        }, { passive: true });
+      let started = false, submitted = false, successSent = false;
+
+      // 4.1) form_start — 1ª interação em QUALQUER campo
+      function onStart(){
+        if (started) return;
+        started = true;
+        track('form_start', {
+          form_id: meta.form_id, form_name: meta.form_name, form_destination: meta.form_destination
+        });
+      }
+      form.querySelectorAll('input, textarea, select').forEach(el => {
+        ['focus','input','change'].forEach(ev => el.addEventListener(ev, onStart, { passive:true }));
       });
 
-      form.addEventListener("submit", () => {
-        const btn = form.querySelector('[type="submit"]');
-        const txt = btn ? (btn.value || btn.innerText || "").trim().toLowerCase() : "enviar";
-        sendEvent("form_submit", Object.assign({}, meta, { form_submit_text: txt }));
-
-        setTimeout(() => {
-          const ok = document.querySelector(".form-success, .alert-success, .mensagem-sucesso, #sucesso");
-          sendEvent("view_form_success", meta);
-        }, 800);
+      // 4.2) form_submit — clique no enviar
+      form.addEventListener('submit', () => {
+        submitted = true;
+        const txt = (submitBtn && (submitBtn.value || submitBtn.innerText || submitBtn.textContent)) || 'enviar';
+        track('form_submit', {
+          form_id: meta.form_id, form_name: meta.form_name, form_destination: meta.form_destination,
+          form_submit_text: String(txt).trim().toLowerCase()
+        });
+        maybeSendSuccess(); // se o popup já estiver visível
       });
-    });
-  }
 
-  // === Inicialização principal ===
-  function init() {
-    dbg("🔄 Inicializando tagueamento v3");
-    loadGA();
-    document.addEventListener("click", onGlobalClick, true);
-    trackForms();
-
-    // Monitor de formulários dinâmicos
-    const obs = new MutationObserver(trackForms);
-    obs.observe(document.body, { childList: true, subtree: true });
-
-    // Page_view em mudanças de hash ou histórico
-    window.addEventListener("hashchange", () => sendPageView({ reason: "hashchange" }));
-    window.addEventListener("popstate", () => sendPageView({ reason: "popstate" }));
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") sendPageView({ reason: "visible" });
-    });
-  }
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
-  } else {
-    init();
-  }
+      // 4.3) view_form_success — quando aparecer o popup/mensagem de sucesso
+      const successSelectors = [
+        '.lightbox', '.form-success', '.mensagem-sucesso', '.alert-success', '.toast-success', '#sucesso', '.popup-success'
+      ];
+      function isVisible(el){ return !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length); }
+      function successVisible(){
+        for (const sel of successSelectors) { const el = document.querySelector(sel); if (isVisible(el)) return true; }
+        return false;
+      }
+      function maybeSendSuccess(){
+        if (!submitted || successSent) return;   // só depois do submit e 1x
+        if (successVisible()){
+          successSent = true;
+          track('view_form_success', { form_id: meta.form_id, form_name: meta.form_name });
+          try { obs.disconnect(); } catch(e){}
+        }
+      }
+      const obs = new MutationObserver(maybeSendSuccess);
+      obs.observe(document.body, { childList:true, subtree:true, attributes:true,
+                                   attributeFilter:['style','class','hidden','aria-hidden'] });
+    }
+  });
 })();
