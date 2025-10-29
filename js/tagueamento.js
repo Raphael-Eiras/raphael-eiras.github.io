@@ -1,102 +1,115 @@
-/* tagueamento.js - GTAG versão final e blindada */
+/* =======================================================
+   TAGUEAMENTO DP6 – VERSÃO FINAL (GA4 G-096NHNN8Q2)
+   Ambiente: GitHub Pages
+   Autor: Raphael Eiras (implementação)
+   ======================================================= */
+
 (function () {
   const GA4_ID = "G-096NHNN8Q2";
-  const BLOCKED_IDS = ["G-BZXLFW2C48"];
+  const BLOCKED_IDS = ["G-BZXLFW2C48", "GTM-PTTTCJGS"];
   window.dataLayer = window.dataLayer || [];
 
-  // 🔒 BLOQUEIO PROATIVO – intercepta qualquer tentativa de carregar gtag.js de outro ID
-  const originalCreateElement = document.createElement;
-  document.createElement = function (tagName, options) {
-    const element = originalCreateElement.call(this, tagName, options);
-    if (tagName.toLowerCase() === "script") {
-      const originalSetAttribute = element.setAttribute;
-      element.setAttribute = function (name, value) {
-        if (name === "src" && typeof value === "string") {
-          if (BLOCKED_IDS.some(id => value.includes(id))) {
-            console.warn("🚫 Bloqueado script GA4 não autorizado:", value);
-            value = ""; // anula o carregamento
-          }
+  /* =======================================================
+     BLOQUEIO DE SCRIPTS INDEVIDOS (GA4 / GTM errados)
+  ======================================================= */
+  const observer = new MutationObserver((mutations) => {
+    for (const m of mutations) {
+      m.addedNodes.forEach((node) => {
+        if (
+          node.tagName === "SCRIPT" &&
+          node.src &&
+          BLOCKED_IDS.some((id) => node.src.includes(id))
+        ) {
+          console.warn("🚫 Script bloqueado:", node.src);
+          node.remove();
         }
-        return originalSetAttribute.call(this, name, value);
-      };
+      });
     }
-    return element;
-  };
+  });
+  observer.observe(document.documentElement, { childList: true, subtree: true });
 
-  // 🔄 Reconfigura o gtag isolado
-  window.gtag = window.gtag || function () {
-    dataLayer.push(arguments);
-  };
+  /* =======================================================
+     INICIALIZAÇÃO DO GA4
+  ======================================================= */
+  function loadGA4() {
+    const existing = document.querySelector(
+      `script[src*="googletagmanager.com/gtag/js?id=${GA4_ID}"]`
+    );
+    if (existing) return initGA4();
 
-  // 🔽 Carrega o GA4 correto de forma controlada
-  if (!document.querySelector(`script[src*="googletagmanager.com/gtag/js?id=${GA4_ID}"]`)) {
     const s = document.createElement("script");
     s.defer = true;
     s.src = `https://www.googletagmanager.com/gtag/js?id=${GA4_ID}`;
+    s.onload = initGA4;
     document.head.appendChild(s);
   }
 
-  // 📄 Envio confiável de page_view
+  function initGA4() {
+    window.gtag = window.gtag || function () {
+      dataLayer.push(arguments);
+    };
+    gtag("js", new Date());
+    gtag("config", GA4_ID, { send_page_view: false });
+    sendPageView();
+  }
+
+  /* =======================================================
+     ENVIO DE EVENTOS
+  ======================================================= */
   function sendPageView() {
     const payload = { page_location: location.href };
     gtag("event", "page_view", payload);
-    if (window.__DEBUG_GTAG) console.log("✅ page_view enviado:", payload);
+    if (window.__DEBUG_GTAG) console.log("📄 page_view:", payload);
   }
 
-  // 🧩 Inicialização segura
-  function initGA() {
-    try {
-      gtag("js", new Date());
-      gtag("config", GA4_ID, { send_page_view: false });
-      sendPageView();
-    } catch (e) {
-      console.warn("⏳ GA4 ainda não pronto, tentando novamente...");
-      setTimeout(initGA, 600);
-    }
-  }
-
-  window.addEventListener("load", initGA);
-  window.addEventListener("popstate", sendPageView);
-
-  // 🚀 Função utilitária para eventos
-  function track(name, params) {
+  function track(eventName, params) {
     const payload = Object.assign({ page_location: location.href }, params || {});
-    gtag("event", name, payload);
-    if (window.__DEBUG_GTAG) console.log("➡️ Enviado:", name, payload);
+    gtag("event", eventName, payload);
+    if (window.__DEBUG_GTAG)
+      console.log("🎯 evento:", eventName, payload);
   }
 
+  /* =======================================================
+     TAGUEAMENTO – AO CARREGAR O DOM
+  ======================================================= */
   document.addEventListener("DOMContentLoaded", () => {
-    if (window.__GA4_BOUND) return;
-    window.__GA4_BOUND = true;
+    // PAGEVIEW no carregamento
+    loadGA4();
 
-    /* ===== MENU ===== */
+    /* ========= MENU ========= */
     const contato = document.querySelector(".menu-lista-contato");
     const download = document.querySelector(".menu-lista-download");
-    if (contato) contato.addEventListener("click", () =>
-      track("click", { element_group: "menu", element_name: "entre_em_contato" })
-    );
-    if (download) download.addEventListener("click", () =>
-      track("file_download", { element_group: "menu", element_name: "download_pdf" })
-    );
 
-    /* ===== ANÁLISE (Lorem Ipsum) ===== */
+    if (contato)
+      contato.addEventListener("click", () => {
+        track("click", { element_group: "menu", element_name: "entre_em_contato" });
+      });
+
+    if (download)
+      download.addEventListener("click", () => {
+        track("file_download", { element_group: "menu", element_name: "download_pdf" });
+      });
+
+    /* ========= ANÁLISE ========= */
     if (document.body.classList.contains("analise")) {
-      const cards = document.querySelectorAll(
-        ".card-link, .card a, .btn, .vermais, .card-montadoras a, .card-item a, button, a[onclick]"
-      );
       const labels = ["lorem", "ipsum", "dolor", "amet"];
+      const cards = document.querySelectorAll(
+        ".card-link, .card a, .card-item a, .btn, .vermais, .card-montadoras a, button, a[onclick]"
+      );
+
       cards.forEach((btn, i) => {
         btn.addEventListener("click", () => {
-          let label = btn.innerText.trim().toLowerCase();
-          if (!label || label.length < 3) label = labels[i] || "conteudo";
-          track("click", { element_group: "ver_mais", element_name: label });
+          const name =
+            labels[i] ||
+            (btn.innerText || btn.textContent || "conteudo").trim().toLowerCase();
+          track("click", { element_group: "ver_mais", element_name: name });
         });
       });
     }
 
-    /* ===== SOBRE (Formulário) ===== */
+    /* ========= SOBRE (FORMULÁRIO) ========= */
     if (document.body.classList.contains("sobre")) {
-      const form = document.querySelector("form.contato") || document.querySelector("form");
+      const form = document.querySelector("form") || document.querySelector("form.contato");
       if (!form) return;
 
       const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]');
@@ -107,22 +120,27 @@
           form.getAttribute("action") || (location.origin + location.pathname + "#contato"),
       };
 
-      let started = false, successSent = false;
-      const onStart = () => {
+      let started = false;
+      let successSent = false;
+
+      function startForm() {
         if (started) return;
         started = true;
         track("form_start", meta);
-      };
+      }
 
-      form.querySelectorAll("input, textarea, select").forEach(el => {
-        ["focus", "input", "change"].forEach(ev =>
-          el.addEventListener(ev, onStart, { passive: true })
+      form.querySelectorAll("input, textarea, select").forEach((el) => {
+        ["focus", "input", "change"].forEach((ev) =>
+          el.addEventListener(ev, startForm, { passive: true })
         );
       });
 
       form.addEventListener("submit", () => {
-        const txt = (submitBtn?.value || submitBtn?.innerText || "enviar").trim().toLowerCase();
+        const txt =
+          (submitBtn?.value || submitBtn?.innerText || "enviar").trim().toLowerCase();
         track("form_submit", { ...meta, form_submit_text: txt });
+
+        // Simula mensagem de sucesso (caso não haja retorno do servidor)
         setTimeout(() => {
           if (!successSent) {
             successSent = true;
@@ -131,5 +149,8 @@
         }, 800);
       });
     }
+
+    /* ========= TROCA DE PÁGINA ========= */
+    window.addEventListener("popstate", sendPageView);
   });
 })();
